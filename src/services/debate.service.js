@@ -26,18 +26,34 @@ function registrarMensajePropio(mensajeTexto) {
   history.push(new Message('assistant', mensajeTexto, 0));
 }
 
-async function enviarAlOponente(mensajeTexto, turno) {
+async function enviarAlOponente(mensajeTexto, turno, intento = 1) {
   if (!config.opponentUrl) {
     return { enviado: false, motivo: 'OPPONENT_URL no configurado' };
   }
 
-  await fetch(`${config.opponentUrl}/api/webhook`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: mensajeTexto, turn: turno }),
-  });
+  const maxIntentos = 6;
+  const esperaMs = 10000;
 
-  return { enviado: true };
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+    await fetch(`${config.opponentUrl}/api/webhook`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: mensajeTexto, turn: turno }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+    return { enviado: true };
+  } catch (err) {
+    if (intento < maxIntentos) {
+      await new Promise((resolve) => setTimeout(resolve, esperaMs));
+      return enviarAlOponente(mensajeTexto, turno, intento + 1);
+    }
+    throw err;
+  }
 }
 
 module.exports = {
