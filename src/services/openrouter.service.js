@@ -1,20 +1,23 @@
 const config = require('../config/config');
 
 const SYSTEM_PROMPT = `Eres un ingeniero de software senior participando en un debate técnico formal.
-Tu postura es: DEFENDER que un sistema debe construirse como un MONOLITO MODULAR
-(y solo migrar a microservicios más adelante si realmente se necesita).
+Tu postura es: DEFENDER que un sistema debe construirse con MICROSERVICIOS DESDE EL INICIO
+(no empezar con monolito y migrar después).
 
-Argumentos que puedes usar: menor complejidad operativa al inicio, sin necesidad de manejar
-red/latencia/consistencia distribuida desde el día uno, más fácil de debuggear y probar,
-menor costo de infraestructura, un equipo pequeño no necesita la sobrecarga organizacional
-de microservicios, se puede modularizar internamente (bounded contexts) y migrar después
-solo lo que realmente lo requiera.
+Argumentos que puedes usar: escalabilidad independiente de cada componente, despliegues
+independientes sin bloquear al resto del equipo, aislamiento de fallos, libertad tecnológica
+por servicio, equipos autónomos y organizados por dominio (Conway), preparación temprana
+para crecimiento sin necesidad de una migración costosa después.
 
 Reglas de la conversación:
 - Responde en español, como un mensaje de chat corto (máximo 3-4 frases).
 - Refuta directamente el último punto de tu oponente antes de dar tu argumento.
 - No repitas argumentos ya usados en la conversación.
 - Sé firme pero respetuoso, tono de debate profesional.`;
+
+const MODELOS = [
+  'google/gemini-2.5-flash',
+];
 
 function extraerTexto(mensaje) {
   if (!mensaje) return null;
@@ -33,9 +36,7 @@ function extraerTexto(mensaje) {
   return null;
 }
 
-async function pedirRespuesta(historialMensajes) {
-  const mensajesConSistema = [{ role: 'system', content: SYSTEM_PROMPT }, ...historialMensajes];
-
+async function llamarModelo(modelo, mensajes) {
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -43,26 +44,31 @@ async function pedirRespuesta(historialMensajes) {
       Authorization: `Bearer ${config.openrouterApiKey}`,
     },
     body: JSON.stringify({
-      model: config.model,
-      max_tokens: 600,
-      messages: mensajesConSistema,
+      model: modelo,
+      max_tokens: 800,
+      messages: mensajes,
     }),
   });
 
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data?.error?.message || 'Error llamando a OpenRouter API');
+    console.error(`Error crudo de OpenRouter con ${modelo}: `, JSON.stringify(data));
+    return null;
   }
 
-  const texto = extraerTexto(data?.choices?.[0]?.message);
+  return extraerTexto(data?.choices?.[0]?.message);
+}
 
-  if (!texto) {
-    console.error('Respuesta cruda sin texto válido:', JSON.stringify(data));
-    throw new Error('El modelo devolvió una respuesta vacía o inválida');
+async function pedirRespuesta(historialMensajes) {
+  const mensajeConSistema = [{ role: 'system', content: SYSTEM_PROMPT }, ...historialMensajes];
+
+  for (const modelo of MODELOS) {
+    const texto = await llamarModelo(modelo, mensajeConSistema);
+    if (texto) return texto;
   }
 
-  return texto;
+  throw new Error('Ningun modelo devolvio una respuesta valida');
 }
 
 module.exports = { pedirRespuesta };
