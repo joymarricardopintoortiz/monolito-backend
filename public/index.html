@@ -217,6 +217,12 @@
       status.textContent = 'Debate reiniciado';
     }
 
+    document.getElementById('mensajeInicial').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        iniciar();
+      }
+    })
+
     setInterval(actualizar, 2000);
     actualizar();
   </script>
